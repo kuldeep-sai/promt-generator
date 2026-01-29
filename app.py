@@ -1,6 +1,7 @@
 import streamlit as st
 from bs4 import BeautifulSoup
-from openai import OpenAI, error
+import openai
+from openai import OpenAI
 
 # ---------- Streamlit Page Setup ----------
 st.set_page_config(page_title="LLM Prompt Generator", layout="wide")
@@ -24,12 +25,14 @@ if not st.session_state.api_key:
     st.warning("Please enter your OpenAI API Key to continue.")
     st.stop()
 
+# ---------- INITIALIZE OPENAI CLIENT ----------
+client = OpenAI(api_key=st.session_state.api_key)
+
 # ---------- VALIDATE API KEY ----------
 try:
-    client = OpenAI(api_key=st.session_state.api_key)
     client.models.list()  # simple test call
-except error.AuthenticationError:
-    st.error("❌ Invalid API Key. Please check and try again.")
+except openai.error.AuthenticationError:
+    st.error("❌ Invalid OpenAI API Key. Please check and try again.")
     st.stop()
 except Exception as e:
     st.error(f"❌ Error connecting to OpenAI: {e}")
@@ -100,10 +103,10 @@ def call_llm(prompt):
             temperature=0.3
         )
         return response.choices[0].message.content
-    except error.AuthenticationError:
+    except openai.error.AuthenticationError:
         st.error("❌ Authentication error with OpenAI API Key. Please check it.")
         st.stop()
-    except Exception as e:
+    except openai.error.OpenAIError as e:
         st.error(f"❌ OpenAI request error: {e}")
         st.stop()
 
