@@ -1,26 +1,43 @@
 import streamlit as st
 from bs4 import BeautifulSoup
-from openai import OpenAI
+from openai import OpenAI, error
 
-# ---------- Streamlit UI ----------
-st.set_page_config(page_title="Article → LLM Prompt Generator", layout="wide")
+# ---------- Streamlit Page Setup ----------
+st.set_page_config(page_title="LLM Prompt Generator", layout="wide")
 st.title("🧠 Article → LLM Prompt Generator")
 
-# ---- Frontend API Key Input ----
-api_key = st.text_input(
+# ---------- FRONTEND API KEY INPUT ----------
+if "api_key" not in st.session_state:
+    st.session_state.api_key = ""
+
+api_key_input = st.text_input(
     "Enter your OpenAI API Key",
     type="password",
-    placeholder="sk-xxxx..."
-)
+    placeholder="sk-xxxx...",
+    value=st.session_state.api_key
+).strip()
 
-if not api_key:
+if api_key_input:
+    st.session_state.api_key = api_key_input
+
+if not st.session_state.api_key:
     st.warning("Please enter your OpenAI API Key to continue.")
     st.stop()
 
-# ---------- Initialize OpenAI ----------
-client = OpenAI(api_key=api_key)
+# ---------- VALIDATE API KEY ----------
+try:
+    client = OpenAI(api_key=st.session_state.api_key)
+    client.models.list()  # simple test call
+except error.AuthenticationError:
+    st.error("❌ Invalid API Key. Please check and try again.")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error connecting to OpenAI: {e}")
+    st.stop()
 
-# ---------- Prompt Templates ----------
+st.success("✅ API Key is valid!")
+
+# ---------- PROMPT TEMPLATES ----------
 FAQ_PROMPT = """
 Generate 4 SEO-compliant FAQs based on the article below.
 
@@ -63,7 +80,7 @@ Context:
 {summary}
 """
 
-# ---------- Helpers ----------
+# ---------- HELPER FUNCTIONS ----------
 def parse_article(content):
     soup = BeautifulSoup(content, "html.parser")
     title = soup.find("h1").get_text(strip=True) if soup.find("h1") else "Untitled"
@@ -73,22 +90,31 @@ def parse_article(content):
     return title, headings, summary
 
 def call_llm(prompt):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are an expert SEO editor and knowledge architect."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.3
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert SEO editor and knowledge architect."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+        return response.choices[0].message.content
+    except error.AuthenticationError:
+        st.error("❌ Authentication error with OpenAI API Key. Please check it.")
+        st.stop()
+    except Exception as e:
+        st.error(f"❌ OpenAI request error: {e}")
+        st.stop()
 
-# ---------- Article Input ----------
+# ---------- ARTICLE INPUT ----------
 article_input = st.text_area(
     "Paste Article HTML or Content",
     height=300,
     placeholder="Paste full article HTML or plain text here"
 )
+
+faq_count = st.slider("Number of FAQs to generate", 1, 10, 4)
 
 if st.button("Generate Prompts"):
     if not article_input.strip():
@@ -102,20 +128,23 @@ if st.button("Generate Prompts"):
         headings=", ".join(headings),
         summary=summary
     )
+    ai_prompt = AI_OVERVIEW_PROMPT.format(summary=summary)
+    paa_prompt = PAA_PROMPT.format(summary=summary)
+    entity_prompt = ENTITY_PROMPT.format(summary=summary)
 
     with st.spinner("Generating prompts via OpenAI..."):
-        faq = call_llm(faq_prompt)
-        overview = call_llm(AI_OVERVIEW_PROMPT.format(summary=summary))
-        paa = call_llm(PAA_PROMPT.format(summary=summary))
-        entities = call_llm(ENTITY_PROMPT.format(summary=summary))
+        faq_output = call_llm(faq_prompt)
+        ai_output = call_llm(ai_prompt)
+        paa_output = call_llm(paa_prompt)
+        entity_output = call_llm(entity_prompt)
 
     tab1, tab2, tab3, tab4 = st.tabs(["FAQs", "AI Overview", "PAA", "Entities"])
 
     with tab1:
-        st.text_area("FAQs", faq, height=300)
+        st.text_area("FAQs", faq_output, height=300)
     with tab2:
-        st.text_area("AI Overview", overview, height=200)
+        st.text_area("AI Overview", ai_output, height=200)
     with tab3:
-        st.text_area("People Also Ask", paa, height=200)
+        st.text_area("People Also Ask", paa_output, height=200)
     with tab4:
-        st.text_area("Entities", entities, height=250)
+        st.text_area("Entities", entity_output, height=250)
