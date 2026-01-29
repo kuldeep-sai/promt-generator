@@ -2,8 +2,23 @@ import streamlit as st
 from bs4 import BeautifulSoup
 from openai import OpenAI
 
-# ---------- OpenAI Client ----------
-client = OpenAI()
+# ---------- Streamlit UI ----------
+st.set_page_config(page_title="Article → LLM Prompt Generator", layout="wide")
+st.title("🧠 Article → LLM Prompt Generator")
+
+# ---- Frontend API Key Input ----
+api_key = st.text_input(
+    "Enter your OpenAI API Key",
+    type="password",
+    placeholder="sk-xxxx..."
+)
+
+if not api_key:
+    st.warning("Please enter your OpenAI API Key to continue.")
+    st.stop()
+
+# ---------- Initialize OpenAI ----------
+client = OpenAI(api_key=api_key)
 
 # ---------- Prompt Templates ----------
 FAQ_PROMPT = """
@@ -51,15 +66,11 @@ Context:
 # ---------- Helpers ----------
 def parse_article(content):
     soup = BeautifulSoup(content, "html.parser")
-
     title = soup.find("h1").get_text(strip=True) if soup.find("h1") else "Untitled"
     headings = [h.get_text(strip=True) for h in soup.find_all(["h2", "h3"])][:8]
     paragraphs = [p.get_text(strip=True) for p in soup.find_all("p")]
-
     summary = " ".join(paragraphs[:5])[:1500]
-
     return title, headings, summary
-
 
 def call_llm(prompt):
     response = client.chat.completions.create(
@@ -72,12 +83,7 @@ def call_llm(prompt):
     )
     return response.choices[0].message.content
 
-
-# ---------- Streamlit UI ----------
-st.set_page_config(page_title="Article → LLM Prompt Generator", layout="wide")
-
-st.title("🧠 Article → LLM Prompt Generator")
-
+# ---------- Article Input ----------
 article_input = st.text_area(
     "Paste Article HTML or Content",
     height=300,
@@ -97,7 +103,7 @@ if st.button("Generate Prompts"):
         summary=summary
     )
 
-    with st.spinner("Generating prompts using OpenAI..."):
+    with st.spinner("Generating prompts via OpenAI..."):
         faq = call_llm(faq_prompt)
         overview = call_llm(AI_OVERVIEW_PROMPT.format(summary=summary))
         paa = call_llm(PAA_PROMPT.format(summary=summary))
@@ -107,12 +113,9 @@ if st.button("Generate Prompts"):
 
     with tab1:
         st.text_area("FAQs", faq, height=300)
-
     with tab2:
         st.text_area("AI Overview", overview, height=200)
-
     with tab3:
         st.text_area("People Also Ask", paa, height=200)
-
     with tab4:
         st.text_area("Entities", entities, height=250)
